@@ -17,8 +17,33 @@ const int HX711_sck = 5;
 const int trigPin = 17; 
 const int echoPin = 16; 
 
-// Setup
 
+// Lecturas y filtado de ultrasonico
+float readDistanceRaw() {
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+
+  long duration = pulseIn(echoPin, HIGH, 30000); 
+  if (duration == 0) return -1;
+  return duration * 0.0343 / 2.0;
+}
+
+void ordenar(float arr[], int n) {
+  for (int i = 0; i < n - 1; i++) {
+    for (int j = 0; j < n - i - 1; j++) {
+      if (arr[j] > arr[j + 1]) {
+        float temp = arr[j];
+        arr[j] = arr[j + 1];
+        arr[j + 1] = temp;
+      }
+    }
+  }
+}
+
+// Setup
 void setup() {
     Serial.begin(57600);
     delay(10);
