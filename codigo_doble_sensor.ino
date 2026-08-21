@@ -1,6 +1,7 @@
 
 #include <WiFi.h>
 #include <WebServer.h>
+#include <HX711_ADC.h>
 
 // Configuracion WIFI
 
@@ -18,13 +19,20 @@ const int trigPin = 17;
 const int echoPin = 16; 
 
 // Variables Globales
+// Celda
+HX711_ADC LoadCell(HX711_dout, HX711_sck);
 
+// Web
+
+// Ultrasonido
 float cal_offset = 0.0;
 float cal_factor = 1.0;
 float sonico_alturaRef = 19.5; 
 
 const int N_MUESTRAS = 7;
 float muestras[N_MUESTRAS];
+
+unsigned long lastLog = 0;
 
 // Lecturas y filtado de ultrasonico
 float readDistanceRaw() {
@@ -75,20 +83,33 @@ float getDistanceCalibrated() {
 
 // Setup
 void setup() {
-    Serial.begin(57600);
-    delay(10);
+  Serial.begin(57600);
+  delay(10);
 
-    // Configuracion de pines
-    pinMode(trigPin, OUTPUT);
-    pinMode(echoPin, OUTPUT);
+  // Configuracion de pines
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, OUTPUT);
 
-    // Conexion WIFI
-    WiFi.begin(ssid, password);
-    Serial.print("Estableciendo conexion Wi-Fi");
 
-    int intentos = 0;
+  Serial.println("\n==================================================");
+  Serial.println("         PANEL CONTROL DUAL DE AGUA - IOT         ");
+  Serial.println("==================================================");
 
-    while (WiFi.status() != WL_CONNECTED && intentos < 15) {
+  // Inicializacion de galga
+  LoadCell.begin();
+  LoadCell.setSamplesInUse(64);
+  unsigned long stabilizingtime = 2000;
+  LoadCell.start(stabilizingtime, false);
+
+
+  
+  // Conexion WIFI
+  WiFi.begin(ssid, password);
+  Serial.print("Estableciendo conexion Wi-Fi");
+
+  int intentos = 0;
+
+  while (WiFi.status() != WL_CONNECTED && intentos < 15) {
     delay(500);
     Serial.print(".");
     intentos++;
