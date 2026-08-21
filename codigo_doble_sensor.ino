@@ -17,6 +17,14 @@ const int HX711_sck = 5;
 const int trigPin = 17; 
 const int echoPin = 16; 
 
+// Variables Globales
+
+float cal_offset = 0.0;
+float cal_factor = 1.0;
+float sonico_alturaRef = 19.5; 
+
+const int N_MUESTRAS = 7;
+float muestras[N_MUESTRAS];
 
 // Lecturas y filtado de ultrasonico
 float readDistanceRaw() {
@@ -43,6 +51,28 @@ void ordenar(float arr[], int n) {
   }
 }
 
+float getDistanceFiltered() {
+  int validas = 0;
+  int intentos = 0;
+  while (validas < N_MUESTRAS && intentos < 20) {
+    float d = readDistanceRaw();
+    if (d > 0 && d < 400) {
+      muestras[validas] = d;
+      validas++;
+    }
+    intentos++;
+    delay(5);
+  }
+  if (validas == 0) return sonico_alturaRef; 
+  ordenar(muestras, validas);
+  return muestras[validas / 2]; 
+}
+
+float getDistanceCalibrated() {
+  float d_fil = getDistanceFiltered();
+  return (d_fil * cal_factor) + cal_offset;
+}
+
 // Setup
 void setup() {
     Serial.begin(57600);
@@ -62,5 +92,21 @@ void setup() {
     delay(500);
     Serial.print(".");
     intentos++;
+  }
+}
+
+// Bluce de ejecucion LOOP
+void loop() {
+  server.handleClient();
+  if (millis() - lastLog > 2000) {
+    lastLog = millis();
+    
+    float distS = getDistanceCalibrated();
+    float nivelS = sonico_alturaRef - distS;
+    if (nivelS < 0 || isnan(nivelS) || distS >= sonico_alturaRef) nivelS = 0;
+
+    Serial.println("==================================================");
+    Serial.print("[SONIDO] Dist: "); Serial.print(distS, 1);
+    Serial.print(" cm | Nivel Real: "); Serial.print(nivelS, 2); Serial.println(" cm");
   }
 }
