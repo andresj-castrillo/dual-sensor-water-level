@@ -149,13 +149,54 @@ void calibrarGalga() {
   Serial.print("Factor de calibración guardado: "); Serial.println(newCalibrationValue);
 }
 
+void calibrarUltrasonico() {
+  while (Serial.available() > 0) Serial.read();
+  delay(100);
+
+  Serial.println("\n--- CALIBRACION OBLIGATORIA DEL ULTRASONICO ---");
+  Serial.println("1. Coloque el sensor apuntando a una distancia CONOCIDA fija.");
+  Serial.println("Ingrese esa distancia patrón real en cm:");
+  
+  while (Serial.available() == 0) {
+    delay(10); 
+  }
+  
+  float d_real = Serial.parseFloat();
+  Serial.print("Distancia real patrón registrada: "); Serial.print(d_real); Serial.println(" cm");
+
+  while (Serial.available() > 0) Serial.read();
+
+  Serial.println("Midiendo distancia actual del sensor...");
+  float d_medida = getDistanceFiltered();
+  Serial.print("Distancia medida bruta: "); Serial.print(d_medida); Serial.println(" cm");
+
+  cal_offset = d_real - d_medida;
+  cal_factor = 1.0; 
+
+  Serial.println("\n2. Ingrese la Altura de Referencia del Tanque Vacio (cm) [Ej: 19.5]:");
+  while (Serial.available() == 0) {
+    delay(10); 
+  }
+  
+  float alt_temp = Serial.parseFloat();
+  if(alt_temp > 0) sonico_alturaRef = alt_temp;
+  Serial.print("Nueva Altura de Referencia fijada a: "); Serial.print(sonico_alturaRef); Serial.println(" cm");
+
+  EEPROM.put(EEPROM_OFFSET_ADDR, cal_offset);
+  EEPROM.put(EEPROM_FACTOR_ADDR, cal_factor);
+  EEPROM.put(EEPROM_ALT_REF_ADDR, sonico_alturaRef);
+  EEPROM.commit();
+
+  while (Serial.available() > 0) Serial.read();
+  Serial.println("✓ Calibración de Ultrasonico almacenada con éxito.");
+}
 
 // Setup
 void setup() {
   Serial.begin(57600);
   delay(10);
 
-  // Configuracion de pinesf
+  // Configuracion de pines
   pinMode(trigPin, OUTPUT);
   pinMode(echoPin, OUTPUT);
 
@@ -175,6 +216,7 @@ void setup() {
   // Ejecución de calibraciones secuenciales
   cambiarDimensionesGalga();
   calibrarGalga();
+  calibrarUltrasonico();
 
 
   // Conexion WIFI
