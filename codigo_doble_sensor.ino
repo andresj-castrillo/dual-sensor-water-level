@@ -18,6 +18,15 @@ const int HX711_sck = 5;
 const int trigPin = 17; 
 const int echoPin = 16; 
 
+// Direcciones EEPROM para mapeo de memoria
+
+const int calVal_eepromAdress = 0;   // float (4 bytes)
+const int radio_eepromAdress  = 4;   // float (4 bytes)
+const int altura_eepromAdress = 8;   // float (4 bytes)
+const int EEPROM_OFFSET_ADDR  = 12;  // float (4 bytes)
+const int EEPROM_FACTOR_ADDR  = 16;  // float (4 bytes)
+const int EEPROM_ALT_REF_ADDR = 20;  // float (4 bytes)
+
 // Variables Globales
 // Celda
 HX711_ADC LoadCell(HX711_dout, HX711_sck);
@@ -90,6 +99,7 @@ void setup() {
   pinMode(trigPin, OUTPUT);
   pinMode(echoPin, OUTPUT);
 
+  EEPROM.begin(512); 
 
   Serial.println("\n==================================================");
   Serial.println("         PANEL CONTROL DUAL DE AGUA - IOT         ");
