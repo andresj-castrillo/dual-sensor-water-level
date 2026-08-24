@@ -224,6 +224,10 @@ void setup() {
   calibrarGalga();
   calibrarUltrasonico();
 
+  if(!isnan(f_offset)) cal_offset = f_offset;
+  if(!isnan(f_cal_fact) && f_cal_fact > 0) cal_factor = f_cal_fact;
+  if(!isnan(f_alt_ref) && f_alt_ref > 0) sonico_alturaRef = f_alt_ref;
+
 
   // Conexion WIFI
   WiFi.begin(ssid, password);
