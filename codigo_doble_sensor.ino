@@ -240,6 +240,10 @@ void setup() {
     Serial.print(".");
     intentos++;
   }
+
+  // Establecer el factor final obtenido de la calibración actual
+  if(isnan(f_galga) || f_galga == 0) f_galga = 1.0; 
+  LoadCell.setCalFactor(f_galga);
 }
 
 // Bluce de ejecucion LOOP
