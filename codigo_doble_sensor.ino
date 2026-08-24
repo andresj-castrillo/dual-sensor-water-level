@@ -212,6 +212,12 @@ void setup() {
   unsigned long stabilizingtime = 2000;
   LoadCell.start(stabilizingtime, false);
 
+  // Carga de datos preventivos desde EEPROM
+  float f_galga, f_offset, f_cal_fact, f_alt_ref;
+  EEPROM.get(calVal_eepromAdress, f_galga);
+  EEPROM.get(EEPROM_OFFSET_ADDR, f_offset);
+  EEPROM.get(EEPROM_FACTOR_ADDR, f_cal_fact);
+  EEPROM.get(EEPROM_ALT_REF_ADDR, f_alt_ref);
   
   // Ejecución de calibraciones secuenciales
   cambiarDimensionesGalga();
