@@ -212,11 +212,21 @@ void setup() {
   unsigned long stabilizingtime = 2000;
   LoadCell.start(stabilizingtime, false);
 
+  // Carga de datos preventivos desde EEPROM
+  float f_galga, f_offset, f_cal_fact, f_alt_ref;
+  EEPROM.get(calVal_eepromAdress, f_galga);
+  EEPROM.get(EEPROM_OFFSET_ADDR, f_offset);
+  EEPROM.get(EEPROM_FACTOR_ADDR, f_cal_fact);
+  EEPROM.get(EEPROM_ALT_REF_ADDR, f_alt_ref);
   
   // Ejecución de calibraciones secuenciales
   cambiarDimensionesGalga();
   calibrarGalga();
   calibrarUltrasonico();
+
+  if(!isnan(f_offset)) cal_offset = f_offset;
+  if(!isnan(f_cal_fact) && f_cal_fact > 0) cal_factor = f_cal_fact;
+  if(!isnan(f_alt_ref) && f_alt_ref > 0) sonico_alturaRef = f_alt_ref;
 
 
   // Conexion WIFI
@@ -230,6 +240,10 @@ void setup() {
     Serial.print(".");
     intentos++;
   }
+
+  // Establecer el factor final obtenido de la calibración actual
+  if(isnan(f_galga) || f_galga == 0) f_galga = 1.0; 
+  LoadCell.setCalFactor(f_galga);
 }
 
 // Bluce de ejecucion LOOP
