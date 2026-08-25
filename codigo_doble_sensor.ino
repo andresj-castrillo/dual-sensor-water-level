@@ -2,6 +2,10 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <HX711_ADC.h>
+#include <EEPROM.h>
+#include <time.h>
+#include <ArduinoJson.h>
+#include <LittleFS.h>
 
 // Configuracion WIFI
 
@@ -32,7 +36,11 @@ const int EEPROM_ALT_REF_ADDR = 20;  // float (4 bytes)
 HX711_ADC LoadCell(HX711_dout, HX711_sck);
 
 // Web
+WebServer server(80);
 
+float radio_cm = 10.0;    
+float altura_cm = 20.0;   
+const float DENSIDAD_AGUA = 1.0;
 // Ultrasonido
 float cal_offset = 0.0;
 float cal_factor = 1.0;
@@ -88,6 +96,16 @@ float getDistanceFiltered() {
 float getDistanceCalibrated() {
   float d_fil = getDistanceFiltered();
   return (d_fil * cal_factor) + cal_offset;
+}
+
+String getFormattedTime() {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    return "0000-00-00 00:00:00";
+  }
+  char buffer[30];
+  strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &timeinfo);
+  return String(buffer);
 }
 
 // Calibracion secuemcial obligatorio en consola
@@ -191,6 +209,123 @@ void calibrarUltrasonico() {
   Serial.println("✓ Calibración de Ultrasonico almacenada con éxito.");
 }
 
+// Manejo de endpoints web
+
+void handleDataGalga() {
+  LoadCell.update();
+  float peso = LoadCell.getData();
+  if (peso < 0 || isnan(peso)) peso = 0;
+
+  float volumen = peso / DENSIDAD_AGUA; 
+  float area = PI * pow(radio_cm, 2);
+  
+  float nivel = (area > 0) ? (volumen / area) : 0;
+  float porcentaje = (altura_cm > 0) ? (nivel / altura_cm) * 100.0 : 0;
+  
+  if (porcentaje > 100) porcentaje = 100;
+  if (porcentaje < 0) porcentaje = 0;
+
+  StaticJsonDocument<200> doc;
+  doc["peso"] = peso;
+  doc["nivel"] = nivel;
+  doc["porcentaje"] = porcentaje;
+  doc["radio"] = radio_cm;
+  doc["altura"] = altura_cm;
+  doc["timestamp"] = getFormattedTime();
+
+  String json;
+  serializeJson(doc, json);
+  server.send(200, "application/json", json);
+}
+
+void handleDataSonico() {
+  float distancia = getDistanceCalibrated();
+  if (isnan(distancia) || distancia < 0) distancia = 0;
+  
+  float nivel = sonico_alturaRef - distancia;
+  
+  if (distancia >= sonico_alturaRef || nivel < 0 || isnan(nivel)) {
+    nivel = 0.0;
+  }
+  if (nivel > sonico_alturaRef) {
+    nivel = sonico_alturaRef;
+  }
+  
+  float porcentaje = (sonico_alturaRef > 0) ? (nivel / sonico_alturaRef) * 100.0 : 0;
+  
+  if (porcentaje > 100.0) porcentaje = 100.0;
+  if (porcentaje < 0.0) porcentaje = 0.0;
+
+  StaticJsonDocument<200> doc;
+  doc["distancia"] = distancia;
+  doc["nivel"] = nivel;         
+  doc["porcentaje"] = porcentaje;
+  doc["alturaRef"] = sonico_alturaRef;
+  doc["timestamp"] = getFormattedTime();
+
+  String json;
+  serializeJson(doc, json);
+  server.send(200, "application/json", json);
+}
+
+void handleTareWeb() {
+  LoadCell.tareNoDelay();
+  server.send(200, "text/plain", "Tare completado");
+}
+
+void handleSetDimGalga() {
+  if (server.hasArg("radio") && server.hasArg("altura")) {
+    float r_web = server.arg("radio").toFloat();
+    float h_web = server.arg("altura").toFloat();
+    
+    if(r_web > 0 && h_web > 0) {
+      radio_cm = r_web;
+      altura_cm = h_web;
+      EEPROM.put(radio_eepromAdress, radio_cm);
+      EEPROM.put(altura_eepromAdress, altura_cm);
+      EEPROM.commit();
+      server.send(200, "text/plain", "OK");
+    } else {
+      server.send(400, "text/plain", "Valores deben ser mayores a cero");
+    }
+  } else {
+    server.send(400, "text/plain", "Parametros incorrectos");
+  }
+}
+
+void handleSetDimSonico() {
+  if (server.hasArg("alturaRef")) {
+    float alt_web = server.arg("alturaRef").toFloat();
+    if(alt_web > 0) {
+      sonico_alturaRef = alt_web;
+      EEPROM.put(EEPROM_ALT_REF_ADDR, sonico_alturaRef);
+      EEPROM.commit();
+      server.send(200, "text/plain", "OK");
+    } else {
+      server.send(400, "text/plain", "La altura debe ser mayor a cero");
+    }
+  } else {
+    server.send(400, "text/plain", "Parametros incorrectos");
+  }
+}
+
+void handleNotFound() {
+  String path = server.uri();
+  if (path == "/") path = "/index.html";
+  
+  String dataType = "text/plain";
+  if (path.endsWith(".html")) dataType = "text/html";
+  else if (path.endsWith(".css")) dataType = "text/css";
+  else if (path.endsWith(".js")) dataType = "text/javascript";
+
+  if (LittleFS.exists(path)) {
+    File file = LittleFS.open(path, "r");
+    server.streamFile(file, dataType);
+    file.close();
+  } else {
+    server.send(404, "text/plain", "Archivo no encontrado en LittleFS");
+  }
+}
 // Setup
 void setup() {
   Serial.begin(57600);
@@ -210,7 +345,11 @@ void setup() {
   LoadCell.begin();
   LoadCell.setSamplesInUse(64);
   unsigned long stabilizingtime = 2000;
-  LoadCell.start(stabilizingtime, false);
+  LoadCell.start(stabilizingtime, false);  if (!LittleFS.begin(true)) {
+    Serial.println("Error critico: No se pudo montar LittleFS.");
+  } else {
+    Serial.println("LittleFS montado correctamente.");
+  }
 
   // Carga de datos preventivos desde EEPROM
   float f_galga, f_offset, f_cal_fact, f_alt_ref;
@@ -223,6 +362,12 @@ void setup() {
   cambiarDimensionesGalga();
   calibrarGalga();
   calibrarUltrasonico();
+
+  if (!LittleFS.begin(true)) {
+    Serial.println("Error critico: No se pudo montar LittleFS.");
+  } else {
+    Serial.println("LittleFS montado correctamente.");
+  }
 
   if(!isnan(f_offset)) cal_offset = f_offset;
   if(!isnan(f_cal_fact) && f_cal_fact > 0) cal_factor = f_cal_fact;
@@ -241,6 +386,25 @@ void setup() {
     intentos++;
   }
 
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\n✓ Conexion Wi-Fi establecida.");
+    Serial.print("IP local: http://"); Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("\n⚠ Servidor en modo local (Sin internet).");
+  }
+
+  configTime(-5 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+
+  // Registro de endpoints
+  server.on("/data", HTTP_GET, handleDataGalga);
+  server.on("/data2", HTTP_GET, handleDataSonico);
+  server.on("/tare", HTTP_POST, handleTareWeb);
+  server.on("/setDim", HTTP_GET, handleSetDimGalga);
+  server.on("/setDim2", HTTP_GET, handleSetDimSonico);
+
+  server.onNotFound(handleNotFound);
+  server.begin();
+
   // Establecer el factor final obtenido de la calibración actual
   if(isnan(f_galga) || f_galga == 0) f_galga = 1.0; 
   LoadCell.setCalFactor(f_galga);
@@ -249,14 +413,35 @@ void setup() {
 // Bluce de ejecucion LOOP
 void loop() {
   server.handleClient();
+  LoadCell.update();
+
+  if (Serial.available() > 0) {
+    char inByte = Serial.read();
+    if (inByte == 't') {
+      Serial.println("\n[SERIAL] Solicitando Tare...");
+      LoadCell.tareNoDelay();
+    }
+  }
+
+  if (LoadCell.getTareStatus() == true) {
+    Serial.println("✓ [SISTEMA] Tare completado con éxito.");
+  }
+
   if (millis() - lastLog > 2000) {
     lastLog = millis();
+    
+    float peso = LoadCell.getData();
+    if(peso < 0 || isnan(peso)) peso = 0;
+    float area = PI * pow(radio_cm, 2);
+    float nivelG = area > 0 ? ((peso / DENSIDAD_AGUA) / area) : 0;
     
     float distS = getDistanceCalibrated();
     float nivelS = sonico_alturaRef - distS;
     if (nivelS < 0 || isnan(nivelS) || distS >= sonico_alturaRef) nivelS = 0;
 
     Serial.println("==================================================");
+    Serial.print("[GALGA]  Peso: "); Serial.print(peso, 1);
+    Serial.print(" g | Nivel Real: "); Serial.print(nivelG, 2); Serial.println(" cm");
     Serial.print("[SONIDO] Dist: "); Serial.print(distS, 1);
     Serial.print(" cm | Nivel Real: "); Serial.print(nivelS, 2); Serial.println(" cm");
   }
