@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <HX711_ADC.h>
+#include <time.h>
 
 // Configuracion WIFI
 
@@ -88,6 +89,16 @@ float getDistanceFiltered() {
 float getDistanceCalibrated() {
   float d_fil = getDistanceFiltered();
   return (d_fil * cal_factor) + cal_offset;
+}
+
+String getFormattedTime() {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    return "0000-00-00 00:00:00";
+  }
+  char buffer[30];
+  strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &timeinfo);
+  return String(buffer);
 }
 
 // Calibracion secuemcial obligatorio en consola
@@ -240,6 +251,16 @@ void setup() {
     Serial.print(".");
     intentos++;
   }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\n✓ Conexion Wi-Fi establecida.");
+    Serial.print("IP local: http://"); Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("\n⚠ Servidor en modo local (Sin internet).");
+  }
+
+  configTime(-5 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+
 
   // Establecer el factor final obtenido de la calibración actual
   if(isnan(f_galga) || f_galga == 0) f_galga = 1.0; 
