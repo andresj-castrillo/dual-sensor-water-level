@@ -265,6 +265,48 @@ void handleDataSonico() {
   serializeJson(doc, json);
   server.send(200, "application/json", json);
 }
+
+void handleTareWeb() {
+  LoadCell.tareNoDelay();
+  server.send(200, "text/plain", "Tare completado");
+}
+
+void handleSetDimGalga() {
+  if (server.hasArg("radio") && server.hasArg("altura")) {
+    float r_web = server.arg("radio").toFloat();
+    float h_web = server.arg("altura").toFloat();
+    
+    if(r_web > 0 && h_web > 0) {
+      radio_cm = r_web;
+      altura_cm = h_web;
+      EEPROM.put(radio_eepromAdress, radio_cm);
+      EEPROM.put(altura_eepromAdress, altura_cm);
+      EEPROM.commit();
+      server.send(200, "text/plain", "OK");
+    } else {
+      server.send(400, "text/plain", "Valores deben ser mayores a cero");
+    }
+  } else {
+    server.send(400, "text/plain", "Parametros incorrectos");
+  }
+}
+
+void handleSetDimSonico() {
+  if (server.hasArg("alturaRef")) {
+    float alt_web = server.arg("alturaRef").toFloat();
+    if(alt_web > 0) {
+      sonico_alturaRef = alt_web;
+      EEPROM.put(EEPROM_ALT_REF_ADDR, sonico_alturaRef);
+      EEPROM.commit();
+      server.send(200, "text/plain", "OK");
+    } else {
+      server.send(400, "text/plain", "La altura debe ser mayor a cero");
+    }
+  } else {
+    server.send(400, "text/plain", "Parametros incorrectos");
+  }
+}
+
 // Setup
 void setup() {
   Serial.begin(57600);
@@ -327,7 +369,10 @@ void setup() {
   // Registro de endpoints
   server.on("/data", HTTP_GET, handleDataGalga);
   server.on("/data2", HTTP_GET, handleDataSonico);
-
+  server.on("/tare", HTTP_POST, handleTareWeb);
+  server.on("/setDim", HTTP_GET, handleSetDimGalga);
+  server.on("/setDim2", HTTP_GET, handleSetDimSonico);
+  
   server.onNotFound(handleNotFound);
   server.begin();
 
