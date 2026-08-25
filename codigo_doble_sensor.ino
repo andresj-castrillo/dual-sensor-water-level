@@ -235,6 +235,36 @@ void handleDataGalga() {
   serializeJson(doc, json);
   server.send(200, "application/json", json);
 }
+
+void handleDataSonico() {
+  float distancia = getDistanceCalibrated();
+  if (isnan(distancia) || distancia < 0) distancia = 0;
+  
+  float nivel = sonico_alturaRef - distancia;
+  
+  if (distancia >= sonico_alturaRef || nivel < 0 || isnan(nivel)) {
+    nivel = 0.0;
+  }
+  if (nivel > sonico_alturaRef) {
+    nivel = sonico_alturaRef;
+  }
+  
+  float porcentaje = (sonico_alturaRef > 0) ? (nivel / sonico_alturaRef) * 100.0 : 0;
+  
+  if (porcentaje > 100.0) porcentaje = 100.0;
+  if (porcentaje < 0.0) porcentaje = 0.0;
+
+  StaticJsonDocument<200> doc;
+  doc["distancia"] = distancia;
+  doc["nivel"] = nivel;         
+  doc["porcentaje"] = porcentaje;
+  doc["alturaRef"] = sonico_alturaRef;
+  doc["timestamp"] = getFormattedTime();
+
+  String json;
+  serializeJson(doc, json);
+  server.send(200, "application/json", json);
+}
 // Setup
 void setup() {
   Serial.begin(57600);
@@ -296,8 +326,8 @@ void setup() {
 
   // Registro de endpoints
   server.on("/data", HTTP_GET, handleDataGalga);
+  server.on("/data2", HTTP_GET, handleDataSonico);
 
-  
   server.onNotFound(handleNotFound);
   server.begin();
 
@@ -309,14 +339,35 @@ void setup() {
 // Bluce de ejecucion LOOP
 void loop() {
   server.handleClient();
+  LoadCell.update();
+
+  if (Serial.available() > 0) {
+    char inByte = Serial.read();
+    if (inByte == 't') {
+      Serial.println("\n[SERIAL] Solicitando Tare...");
+      LoadCell.tareNoDelay();
+    }
+  }
+
+  if (LoadCell.getTareStatus() == true) {
+    Serial.println("✓ [SISTEMA] Tare completado con éxito.");
+  }
+
   if (millis() - lastLog > 2000) {
     lastLog = millis();
+    
+    float peso = LoadCell.getData();
+    if(peso < 0 || isnan(peso)) peso = 0;
+    float area = PI * pow(radio_cm, 2);
+    float nivelG = area > 0 ? ((peso / DENSIDAD_AGUA) / area) : 0;
     
     float distS = getDistanceCalibrated();
     float nivelS = sonico_alturaRef - distS;
     if (nivelS < 0 || isnan(nivelS) || distS >= sonico_alturaRef) nivelS = 0;
 
     Serial.println("==================================================");
+    Serial.print("[GALGA]  Peso: "); Serial.print(peso, 1);
+    Serial.print(" g | Nivel Real: "); Serial.print(nivelG, 2); Serial.println(" cm");
     Serial.print("[SONIDO] Dist: "); Serial.print(distS, 1);
     Serial.print(" cm | Nivel Real: "); Serial.print(nivelS, 2); Serial.println(" cm");
   }
