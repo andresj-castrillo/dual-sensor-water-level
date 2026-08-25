@@ -2,8 +2,10 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <HX711_ADC.h>
+#include <EEPROM.h>
 #include <time.h>
 #include <ArduinoJson.h>
+#include <LittleFS.h>
 
 // Configuracion WIFI
 
@@ -307,6 +309,23 @@ void handleSetDimSonico() {
   }
 }
 
+void handleNotFound() {
+  String path = server.uri();
+  if (path == "/") path = "/index.html";
+  
+  String dataType = "text/plain";
+  if (path.endsWith(".html")) dataType = "text/html";
+  else if (path.endsWith(".css")) dataType = "text/css";
+  else if (path.endsWith(".js")) dataType = "text/javascript";
+
+  if (LittleFS.exists(path)) {
+    File file = LittleFS.open(path, "r");
+    server.streamFile(file, dataType);
+    file.close();
+  } else {
+    server.send(404, "text/plain", "Archivo no encontrado en LittleFS");
+  }
+}
 // Setup
 void setup() {
   Serial.begin(57600);
@@ -326,7 +345,11 @@ void setup() {
   LoadCell.begin();
   LoadCell.setSamplesInUse(64);
   unsigned long stabilizingtime = 2000;
-  LoadCell.start(stabilizingtime, false);
+  LoadCell.start(stabilizingtime, false);  if (!LittleFS.begin(true)) {
+    Serial.println("Error critico: No se pudo montar LittleFS.");
+  } else {
+    Serial.println("LittleFS montado correctamente.");
+  }
 
   // Carga de datos preventivos desde EEPROM
   float f_galga, f_offset, f_cal_fact, f_alt_ref;
@@ -339,6 +362,12 @@ void setup() {
   cambiarDimensionesGalga();
   calibrarGalga();
   calibrarUltrasonico();
+
+  if (!LittleFS.begin(true)) {
+    Serial.println("Error critico: No se pudo montar LittleFS.");
+  } else {
+    Serial.println("LittleFS montado correctamente.");
+  }
 
   if(!isnan(f_offset)) cal_offset = f_offset;
   if(!isnan(f_cal_fact) && f_cal_fact > 0) cal_factor = f_cal_fact;
@@ -372,7 +401,7 @@ void setup() {
   server.on("/tare", HTTP_POST, handleTareWeb);
   server.on("/setDim", HTTP_GET, handleSetDimGalga);
   server.on("/setDim2", HTTP_GET, handleSetDimSonico);
-  
+
   server.onNotFound(handleNotFound);
   server.begin();
 
