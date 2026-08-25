@@ -3,6 +3,7 @@
 #include <WebServer.h>
 #include <HX711_ADC.h>
 #include <time.h>
+#include <ArduinoJson.h>
 
 // Configuracion WIFI
 
@@ -33,7 +34,11 @@ const int EEPROM_ALT_REF_ADDR = 20;  // float (4 bytes)
 HX711_ADC LoadCell(HX711_dout, HX711_sck);
 
 // Web
+WebServer server(80);
 
+float radio_cm = 10.0;    
+float altura_cm = 20.0;   
+const float DENSIDAD_AGUA = 1.0;
 // Ultrasonido
 float cal_offset = 0.0;
 float cal_factor = 1.0;
@@ -202,6 +207,34 @@ void calibrarUltrasonico() {
   Serial.println("✓ Calibración de Ultrasonico almacenada con éxito.");
 }
 
+// Manejo de endpoints web
+
+void handleDataGalga() {
+  LoadCell.update();
+  float peso = LoadCell.getData();
+  if (peso < 0 || isnan(peso)) peso = 0;
+
+  float volumen = peso / DENSIDAD_AGUA; 
+  float area = PI * pow(radio_cm, 2);
+  
+  float nivel = (area > 0) ? (volumen / area) : 0;
+  float porcentaje = (altura_cm > 0) ? (nivel / altura_cm) * 100.0 : 0;
+  
+  if (porcentaje > 100) porcentaje = 100;
+  if (porcentaje < 0) porcentaje = 0;
+
+  StaticJsonDocument<200> doc;
+  doc["peso"] = peso;
+  doc["nivel"] = nivel;
+  doc["porcentaje"] = porcentaje;
+  doc["radio"] = radio_cm;
+  doc["altura"] = altura_cm;
+  doc["timestamp"] = getFormattedTime();
+
+  String json;
+  serializeJson(doc, json);
+  server.send(200, "application/json", json);
+}
 // Setup
 void setup() {
   Serial.begin(57600);
@@ -261,6 +294,12 @@ void setup() {
 
   configTime(-5 * 3600, 0, "pool.ntp.org", "time.nist.gov");
 
+  // Registro de endpoints
+  server.on("/data", HTTP_GET, handleDataGalga);
+
+  
+  server.onNotFound(handleNotFound);
+  server.begin();
 
   // Establecer el factor final obtenido de la calibración actual
   if(isnan(f_galga) || f_galga == 0) f_galga = 1.0; 
